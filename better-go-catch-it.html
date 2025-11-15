@@ -183,8 +183,7 @@ batch script to run three parallel experiments of a climate model in
 simple recurring timer, but if it had got to the end of the years
 covered by the experiment and resubmitted at that point, it would have
 started the experiments all over again from the beginning.</p>
-<p>So I wanted something that would check at regular short intervals
-whether (a) the experiment was already running, (b) whether it had reached
+<p>So I wanted something that would check at regular short intervals (a) whether the experiment was already running, (b) whether it had reached
 the output year at which it should stop. If the answer to both of those
 was ‘no’, then I wanted it to submit the three model runs. This seemed
 like a good use case for <code>scrontab</code>.</p>
