@@ -189,12 +189,13 @@ the output year at which it should stop. If the answer to both of those
 was ‘no’, then I wanted it to submit the three model runs. This seemed
 like a good use case for <code>scrontab</code>.</p>
 <h4 id="the-run-submitting-script">1. The run-submitting script</h4>
-<p>To submit all three jobs at once, I have <code>submit_runs.sh</code>
+<p>To submit all three jobs at once, I already had <code>submit_runs.sh</code>
 in my model’s <code>/run</code> folder (where the <code>.run</code>
 files live).</p>
 
- <hr>
+<hr>
 <p><code>submit_runs.sh</code>:</p>
+<hr>
 <pre><code>#!/bin/sh
 
 set -eux
@@ -202,7 +203,7 @@ set -eux
 for exp in my_experiment_foo my_experiment_bar my_experiment_baz; do
     sbatch ${exp}.run
 done</code></pre>
- <hr>
+<hr>
 <p>(I start all my shell scripts with <code>set -eux</code> so that,
 basically, they will stop at the first sign of a problem, and they tell
 me what they’re doing as they do it. More information <a
@@ -215,8 +216,10 @@ which shows <code>100</code> characters of all my
 <code>JobName</code>s.</p>
 <h4 id="the-check-before-submitting-script">2. The
 check-before-submitting script</h4>
- <hr>
+
+<hr>
 <p><code>better-go-catch-it.sh</code>:</p>
+<hr>
 <pre><code>#!/bin/sh
 
 set -eux
@@ -228,7 +231,7 @@ if [ &quot;$(squeue --format=&#39;%.100j&#39; --me  | grep -c ${experiment_name}
 else
     echo &#39;Still running.&#39;
 fi</code></pre>
- <hr>
+<hr>
 
 <p>The syntax above is that we want to get information on what jobs are
 currently running and pending with <code>squeue</code>, and then
@@ -246,8 +249,10 @@ string.</p>
 same date and running for the same number of years each time; if one’s
 finished, they’re all finished. But it’s better practice to check them
 all.</p>
- <hr>
+
+<hr>
 <p><code>better-go-catch-it.sh</code>:</p>
+<hr>
 <pre><code>#!/bin/sh
 
 set -eux
@@ -267,7 +272,7 @@ else
     echo &#39;Still running.&#39;
 fi</code></pre>
 
- <hr>
+<hr>
 <p>OK, now we have confirmation that:</p>
 <ol type="a">
 <li><p>no job with a name that contains <code>${experiment_name}</code>
@@ -281,8 +286,9 @@ is running, and</p></li>
 <p>I’m going to put an <code>exit</code> in there so that it won’t go on
 to <code>submit_runs.sh</code> unless (b) is true for all of them.</p>
 
- <hr>
+<hr>
 <p><code>better-go-catch-it.sh</code>:</p>
+<hr>
 <pre><code>#!/bin/sh
 
 set -eux
@@ -316,8 +322,9 @@ fi</code></pre>
 followed the naming convention of
 <code>${experiment_name}_${experiment_version}.run</code>:</p>
 
- <hr>
+<hr>
 <p><code>combined.sh</code>:</p>
+<hr>
 <pre><code>#!/bin/sh
 
 set -eux
