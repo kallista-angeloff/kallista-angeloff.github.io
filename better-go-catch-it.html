@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>How to use scrontab to submit a job as many times as it takes, but no more</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+
+<h3
+id="how-to-use-scrontab-to-submit-a-job-as-many-times-as-it-takes-but-no-more">How
+to use <code>scrontab</code> to submit a job as many times as it takes,
+but no more</h3>
+<p>This tutorial assumes that you know approximately what <a
+href="https://slurm.schedmd.com/scrontab.html">scrontab</a> is and is
+for (scheduling recurring SLURM jobs).</p>
+<p>I wrote the shell script here because I needed to repeatedly submit a
+batch script to run three parallel experiments of a climate model in
+<em>n</em>-year increments. I could have put the submission script on a
+simple recurring timer, but if it had got to the end of the years
+covered by the experiment and resubmitted at that point, it would have
+started the experiments all over again from the beginning.</p>
+<p>So I wanted something that would (a) check at regular short intervals
+whether the experiment was already running, (b) whether it had reached
+the output year at which it should stop. If the answer to both of those
+was ‘no’, then I wanted it to submit the three model runs. This seemed
+like a good use case for <code>scrontab</code>.</p>
+<h4 id="the-run-submitting-script">1. The run-submitting script</h4>
+<p>To submit all three jobs at once, I have <code>submit_runs.sh</code>
+in my model’s <code>/run</code> folder (where the <code>.run</code>
+files live).</p>
+
+ <hr>
+<p><code>submit_runs.sh</code>:</p>
+<pre><code>#!/bin/sh
+
+set -eux
+
+for exp in my_experiment_foo my_experiment_bar my_experiment_baz; do
+    sbatch ${exp}.run
+done</code></pre>
+ <hr>
+<p>(I start all my shell scripts with <code>set -eux</code> so that,
+basically, they will stop at the first sign of a problem, and they tell
+me what they’re doing as they do it. More information <a
+href="https://explainshell.com/explain?cmd=set+-eux">here</a>.)</p>
+<p>So far, so good. So now I want (a), checking whether any of these
+jobs are already running or pending. The easiest way is to see whether
+the <code>my_experiment</code> string that they all have in common is
+present in the output of <code>squeue --format='%.100j' --me</code>,
+which shows <code>100</code> characters of all my
+<code>JobName</code>s.</p>
+<h4 id="the-check-before-submitting-script">2. The
+check-before-submitting script</h4>
+ <hr>
+<p><code>better-go-catch-it.sh</code>:</p>
+<pre><code>#!/bin/sh
+
+set -eux
+ 
+experiment_name=&#39;my_experiment&#39;
+
+if [ &quot;$(squeue --format=&#39;%.100j&#39; --me  | grep -c ${experiment_name})&quot; -eq 0 ]; then
+    echo &#39;Not running. Has it reached the desired year?&#39;
+else
+    echo &#39;Still running.&#39;
+fi</code></pre>
+ <hr>
+
+<p>The syntax above is that we want to get information on what jobs are
+currently running and pending with <code>squeue</code>, and then
+<code>grep -c</code> that information to count how many times the
+<code>experiment_name</code> string is present in the list of
+<code>JobName</code>s. Then, <code>if</code> that’s <code>eq</code>ual
+to <code>0</code> times, we conclude that no such job is running.</p>
+<p>So now we want to go on to (b), checking whether the output has
+reached the desired year. I’m doing this by going into the experiment
+output directories and checking whether any files have the desired time
+string.</p>
+<p>In my case, it doesn’t actually matter whether that’s
+<code>my_experiment_foo</code>, <code>my_experiment_bar</code>, or
+<code>my_experiment_baz</code>, because they’re all starting from the
+same date and running for the same number of years each time; if one’s
+finished, they’re all finished. But it’s better practice to check them
+all.</p>
+ <hr>
+<p><code>better-go-catch-it.sh</code>:</p>
+<pre><code>#!/bin/sh
+
+set -eux
+ 
+experiment_name=&#39;my_experiment&#39;
+experiment_directory=&#39;path/to/all-experiments/&#39;
+year_string=&#39;end_date&#39;
+
+if [ &quot;$(squeue --format=&#39;%.100j&#39; --me | grep -c ${experiment_name})&quot; -eq 0 ]; then
+    echo &#39;Not running. Has it reached the desired year?&#39;
+    for experiment_version in foo bar baz; do
+        if [ &quot;$(ls -l &quot;${experiment_directory}/${experiment_name}_${experiment_version}&quot; | grep -c ${year_string})&quot; -eq 0 ]; then
+            echo &quot;Experiment ${experiment_version} has not reached the desired year.&quot;
+        fi
+    done
+else
+    echo &#39;Still running.&#39;
+fi</code></pre>
+
+ <hr>
+<p>OK, now we have confirmation that:</p>
+<ol type="a">
+<li><p>no job with a name that contains <code>${experiment_name}</code>
+is running, and</p></li>
+<li><p>none of the individual experiment directories
+(<code>my_experiment_foo</code>, <code>my_experiment_bar</code>,
+<code>my_experiment_baz</code>) contain a file whose name contains
+<code>${year_string}</code>.</p></li>
+</ol>
+<p>So now we can go ahead and submit <code>submit_runs.sh</code>.</p>
+<p>I’m going to put an <code>exit</code> in there so that it won’t go on
+to <code>submit_runs.sh</code> unless (b) is true for all of them.</p>
+
+ <hr>
+<p><code>better-go-catch-it.sh</code>:</p>
+<pre><code>#!/bin/sh
+
+set -eux
+ 
+experiment_name=&#39;my_experiment&#39;
+experiment_directory=&#39;path/to/all-experiments&#39;
+year_string=&#39;end_date&#39;
+run_directory=&#39;path/to/run&#39;
+run_shell_script=&#39;submit_runs.sh&#39;
+
+if [ &quot;$(squeue --format=&#39;%.100j&#39; --me | grep -c ${experiment_name})&quot; -eq 0 ]; then
+    echo &#39;Not running. Has it reached the desired year?&#39;
+    for experiment_version in foo bar baz; do
+        if [ &quot;$(ls -l &quot;${experiment_directory}/${experiment_name}_${experiment_version}&quot; | grep -c ${year_string})&quot; -eq 0 ]; then
+            echo &quot;Experiment ${experiment_version} has not reached the desired year.&quot;
+        else
+            echo &quot;Experiment ${experiment_version} has finished! Stop.&quot;
+            exit 
+        cd ${run_directory}
+        sbatch ${run_shell_script} 
+        echo &quot;Submitted runs through ${run_shell_script}, now in progress.&quot;
+        fi
+    done
+else
+    echo &#39;Still running.&#39;
+fi</code></pre>
+ <hr>
+
+<p>You could of course combine <code>better-go-catch-it.sh</code> and
+<code>submit_runs.sh</code>, if you had taken care that your runscripts
+followed the naming convention of
+<code>${experiment_name}_${experiment_version}.run</code>:</p>
+
+ <hr>
+<p><code>combined.sh</code>:</p>
+<pre><code>#!/bin/sh
+
+set -eux
+ 
+experiment_name=&#39;my_experiment&#39;
+experiment_directory=&#39;path/to/all-experiments&#39;
+year_string=&#39;end_date&#39;
+run_directory=&#39;path/to/run&#39;
+
+
+if [ &quot;$(squeue --format=&#39;%.100j&#39; --me | grep -c ${experiment_name})&quot; -eq 0 ]; then
+    echo &#39;Not running. Has it reached the desired year?&#39;
+    for experiment_version in foo bar baz; do
+        if [ &quot;$(ls -l &quot;${experiment_directory}/${experiment_name}_${experiment_version}&quot; | grep -c ${year_string})&quot; -eq 0 ]; then
+            echo &quot;Experiment ${experiment_version} has not reached the desired year.&quot;
+        else
+            echo &quot;Experiment ${experiment_version} has finished! Stop.&quot;
+            exit 
+        fi 
+    done 
+    cd ${run_directory}
+    for experiment_version in foo bar baz; do
+        sbatch &quot;${experiment_name}_${experiment_version}.run&quot;
+    done
+else
+    echo &#39;Still running.&#39;
+fi</code></pre>
+<hr>
+
+
+<p>– though I prefer to keep them modular and keep
+<code>submit_runs.sh</code> in the <code>/run</code> directory.</p>
+<p>So now all we need to do is tell <code>scrontab</code> to run this
+every so often. This is the easy bit.</p>
+<h4 id="scrontab">3. <code>scrontab</code></h4>
+<p>Edit the <code>scrontab</code> file with <code>scrontab -e</code>. (I
+set <code>export EDITOR=nano</code> in my <code>.bashrc</code>.) The
+syntax is explained <a
+href="https://crontab.guru/examples.html">here</a>, but all I had to add
+was:</p>
+
+ <hr>
+<pre><code># every five minutes, check whether a named slurm job already running; if not, submit it
+ */5 * * * * /path/to/my_home_directory/better-go-catch-it.sh</code></pre>
+ <hr>
+
+<p>And that’s it!</p>
+<p>If you want to download and edit the shell script of
+<code>better-go-catch-it.sh</code> by itself, it’s <a
+href="https://kallista-angeloff.github.io/better-go-catch-it.sh">here</a>.</p>
+</body>
